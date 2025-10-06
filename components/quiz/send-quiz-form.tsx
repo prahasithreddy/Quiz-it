@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Quiz } from "../../types/quiz";
 
 interface SendQuizFormProps {
@@ -10,9 +11,9 @@ interface SendQuizFormProps {
 
 export function SendQuizForm({ quiz, onSuccess }: SendQuizFormProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
   const [formData, setFormData] = useState({
-    recipientEmail: "",
-    recipientName: "",
+    recipientEmails: [""],
     senderName: "",
     subject: `Quiz: ${quiz.meta.title}`,
     message: "",
@@ -26,10 +27,39 @@ export function SendQuizForm({ quiz, onSuccess }: SendQuizFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  const addEmailField = () => {
+    setFormData(prev => ({
+      ...prev,
+      recipientEmails: [...prev.recipientEmails, ""]
+    }));
+  };
+
+  const removeEmailField = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      recipientEmails: prev.recipientEmails.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateEmail = (index: number, email: string) => {
+    setFormData(prev => ({
+      ...prev,
+      recipientEmails: prev.recipientEmails.map((e, i) => i === index ? email : e)
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    // Filter out empty emails and validate
+    const validEmails = formData.recipientEmails.filter(email => email.trim() !== "");
+    if (validEmails.length === 0) {
+      setError("Please add at least one recipient email");
+      setLoading(false);
+      return;
+    }
 
     try {
       const response = await fetch("/api/quiz/share", {
@@ -38,8 +68,7 @@ export function SendQuizForm({ quiz, onSuccess }: SendQuizFormProps) {
         body: JSON.stringify({
           quizData: quiz,
           emailData: {
-            recipientEmail: formData.recipientEmail,
-            recipientName: formData.recipientName || undefined,
+            recipientEmails: validEmails,
             senderName: formData.senderName || undefined,
             subject: formData.subject || undefined,
             message: formData.message || undefined,
@@ -64,16 +93,18 @@ export function SendQuizForm({ quiz, onSuccess }: SendQuizFormProps) {
       setSuccess(true);
       onSuccess?.();
       
-      // Reset form after success
+      // Reset form and redirect to dashboard after success
       setTimeout(() => {
         setIsOpen(false);
         setSuccess(false);
         setFormData(prev => ({
           ...prev,
-          recipientEmail: "",
-          recipientName: "",
+          recipientEmails: [""],
           message: "",
         }));
+        
+        // Redirect to main dashboard
+        router.push('/quizit/dashboard');
       }, 2000);
 
     } catch (err) {
@@ -126,42 +157,55 @@ export function SendQuizForm({ quiz, onSuccess }: SendQuizFormProps) {
             </svg>
           </div>
           <h4 className="text-xl font-semibold text-gray-900 mb-2">Quiz Sent!</h4>
-          <p className="text-gray-600">The quiz has been sent to {formData.recipientEmail}</p>
+          <p className="text-gray-600">The quiz has been sent to {formData.recipientEmails.filter(e => e.trim()).length} recipient{formData.recipientEmails.filter(e => e.trim()).length !== 1 ? 's' : ''}</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Recipient Information */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Recipient Email *
-            </label>
-            <input
-              type="email"
-              required
-              value={formData.recipientEmail}
-              onChange={(e) => setFormData(prev => ({ ...prev, recipientEmail: e.target.value }))}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white font-medium"
-              placeholder="student@example.com"
-              style={{
-                backgroundColor: '#ffffff',
-                color: '#0f172a',
-                border: '2px solid #d1d5db',
-                fontSize: '16px'
-              }}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Recipient Name (optional)
-            </label>
-            <input
-              type="text"
-              value={formData.recipientName}
-              onChange={(e) => setFormData(prev => ({ ...prev, recipientName: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="John Doe"
-            />
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Recipient Emails *
+              </label>
+              <button
+                type="button"
+                onClick={addEmailField}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                + Add Another
+              </button>
+            </div>
+            <div className="space-y-2">
+              {formData.recipientEmails.map((email, index) => (
+                <div key={index} className="flex items-center space-x-2">
+                  <input
+                    type="email"
+                    required={index === 0} // Only first email is required
+                    value={email}
+                    onChange={(e) => updateEmail(index, e.target.value)}
+                    className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white font-medium"
+                    placeholder={index === 0 ? "student@example.com" : "additional@example.com"}
+                    style={{
+                      backgroundColor: '#ffffff',
+                      color: '#0f172a',
+                      border: '2px solid #d1d5db',
+                      fontSize: '16px'
+                    }}
+                  />
+                  {formData.recipientEmails.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEmailField(index)}
+                      className="p-2 text-red-500 hover:text-red-700 rounded-lg hover:bg-red-50"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div>
@@ -288,7 +332,7 @@ export function SendQuizForm({ quiz, onSuccess }: SendQuizFormProps) {
             </button>
             <button
               type="submit"
-              disabled={loading || !formData.recipientEmail}
+              disabled={loading || !formData.recipientEmails.some(email => email.trim() !== "")}
               className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg border-2 border-blue-600 hover:border-blue-700"
               style={{
                 backgroundColor: '#2563eb',

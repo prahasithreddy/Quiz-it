@@ -55,6 +55,7 @@ export function createDemoSession(): string {
 
   const session = {
     id: sessionId,
+    quizId: `demo_${sessionId}`, // Demo quiz ID
     quizData: demoQuiz,
     recipientEmail: "demo@example.com",
     recipientName: "Demo User",
@@ -76,6 +77,7 @@ export function createDemoSession(): string {
     completedAt: undefined,
     currentQuestionIndex: 0,
     answers: [],
+    score: undefined,
   };
 
   quizSessionStore.create(session);

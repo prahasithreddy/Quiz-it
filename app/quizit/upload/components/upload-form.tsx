@@ -83,7 +83,7 @@ export function UploadForm() {
     if (documentPreview) {
       URL.revokeObjectURL(documentPreview);
     }
-    router.push('/');
+    router.push('/quizit');
   };
 
   if (step === "generating") {

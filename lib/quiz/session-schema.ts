@@ -11,8 +11,7 @@ export const QuizSessionSettingsSchema = z.object({
 
 // Schema for creating a quiz session
 export const CreateQuizSessionSchema = z.object({
-  recipientEmail: z.string().email("Please enter a valid email address"),
-  recipientName: z.string().min(1, "Recipient name is required").optional(),
+  recipientEmails: z.array(z.string().email("Please enter a valid email address")).min(1, "At least one recipient email is required"),
   senderName: z.string().min(1, "Your name is required").optional(),
   subject: z.string().min(1, "Subject is required").optional(),
   message: z.string().optional(),
@@ -22,6 +21,7 @@ export const CreateQuizSessionSchema = z.object({
 // Schema for quiz session stored in database/memory
 export const QuizSessionSchema = z.object({
   id: z.string(),
+  quizId: z.string(), // ID to group sessions by original quiz
   quizData: z.any(), // The generated quiz object
   recipientEmail: z.string().email(),
   recipientName: z.string().optional(),
@@ -42,6 +42,7 @@ export const QuizSessionSchema = z.object({
     answeredAt: z.date(),
     timeSpentSeconds: z.number(),
   })).default([]),
+  score: z.number().optional(), // Final score when completed
 });
 
 // Schema for taking quiz session

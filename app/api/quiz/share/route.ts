@@ -39,74 +39,97 @@ export async function POST(req: NextRequest) {
 
     const { quizData, emailData } = parsed.data;
 
-    // Generate session ID and calculate expiration
-    const sessionId = generateSessionId();
+    // Generate unique quiz ID to group all sessions for this quiz
+    const quizId = `quiz_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date();
     const expiresAt = new Date(now.getTime() + emailData.settings.validityHours * 60 * 60 * 1000);
+    
+    const createdSessions: string[] = [];
+    const failedEmails: string[] = [];
+    
+    // Create a session for each recipient
+    for (const recipientEmail of emailData.recipientEmails) {
+      const sessionId = generateSessionId();
+      
+      // Create quiz session
+      const session = {
+        id: sessionId,
+        quizId,
+        quizData,
+        recipientEmail,
+        recipientName: undefined, // We removed this field from the form
+        senderName: emailData.senderName,
+        subject: emailData.subject || `Quiz: ${quizData.meta?.title || 'Untitled Quiz'}`,
+        message: emailData.message,
+        settings: emailData.settings,
+        createdAt: now,
+        expiresAt,
+        isStarted: false,
+        startedAt: undefined,
+        isCompleted: false,
+        completedAt: undefined,
+        currentQuestionIndex: 0,
+        answers: [],
+        score: undefined,
+      };
 
-    // Create quiz session
-    const session = {
-      id: sessionId,
-      quizData,
-      recipientEmail: emailData.recipientEmail,
-      recipientName: emailData.recipientName,
-      senderName: emailData.senderName,
-      subject: emailData.subject || `Quiz: ${quizData.meta?.title || 'Untitled Quiz'}`,
-      message: emailData.message,
-      settings: emailData.settings,
-      createdAt: now,
-      expiresAt,
-      isStarted: false,
-      startedAt: undefined,
-      isCompleted: false,
-      completedAt: undefined,
-      currentQuestionIndex: 0,
-      answers: [],
-    };
+      // Store the session
+      quizSessionStore.create(session);
 
-    // Store the session
-    quizSessionStore.create(session);
+      // Generate quiz link
+      const quizLink = `${env.BASE_URL}/quizit/quiz/take/${sessionId}`;
 
-    // Generate quiz link
-    const quizLink = `${env.BASE_URL}/quiz/take/${sessionId}`;
+      // Generate email content
+      const emailTemplate = generateQuizEmailTemplate({
+        recipientName: undefined,
+        senderName: emailData.senderName,
+        subject: session.subject,
+        message: emailData.message,
+        quizTitle: quizData.meta?.title || 'Untitled Quiz',
+        quizLink,
+        validityHours: emailData.settings.validityHours,
+        timePerQuestion: emailData.settings.timePerQuestionSeconds,
+      });
 
-    // Generate email content
-    const emailTemplate = generateQuizEmailTemplate({
-      recipientName: emailData.recipientName,
-      senderName: emailData.senderName,
-      subject: session.subject,
-      message: emailData.message,
-      quizTitle: quizData.meta?.title || 'Untitled Quiz',
-      quizLink,
-      validityHours: emailData.settings.validityHours,
-      timePerQuestion: emailData.settings.timePerQuestionSeconds,
-    });
+      // Send email
+      const emailSent = await sendEmail({
+        to: recipientEmail,
+        subject: session.subject,
+        html: emailTemplate.html,
+        text: emailTemplate.text,
+      });
 
-    // Send email
-    const emailSent = await sendEmail({
-      to: emailData.recipientEmail,
-      subject: session.subject,
-      html: emailTemplate.html,
-      text: emailTemplate.text,
-    });
-
-    if (!emailSent) {
-      logger.error({ sessionId, recipientEmail: emailData.recipientEmail }, "Failed to send quiz email");
-      return Response.json({ error: "Failed to send email" }, { status: 500 });
+      if (emailSent) {
+        createdSessions.push(sessionId);
+        logger.info({ 
+          sessionId, 
+          quizId,
+          recipientEmail,
+          validityHours: emailData.settings.validityHours,
+          expiresAt: expiresAt.toISOString()
+        }, "Quiz session created and email sent successfully");
+      } else {
+        failedEmails.push(recipientEmail);
+        logger.error({ sessionId, recipientEmail }, "Failed to send quiz email");
+      }
     }
 
-    logger.info({ 
-      sessionId, 
-      recipientEmail: emailData.recipientEmail,
-      validityHours: emailData.settings.validityHours,
-      expiresAt: expiresAt.toISOString()
-    }, "Quiz session created and email sent successfully");
+    // Return results
+    if (createdSessions.length === 0) {
+      return Response.json({ error: "Failed to send any quiz invites" }, { status: 500 });
+    }
+
+    if (failedEmails.length > 0) {
+      logger.warn({ failedEmails, createdSessions }, "Some emails failed to send");
+    }
 
     return Response.json({ 
       success: true, 
-      sessionId,
+      quizId,
+      sessionIds: createdSessions,
+      failedEmails,
+      totalSent: createdSessions.length,
       expiresAt: expiresAt.toISOString(),
-      quizLink // Return for development/testing purposes
     });
 
   } catch (error) {

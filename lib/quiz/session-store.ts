@@ -174,6 +174,73 @@ class QuizSessionStore {
     }
     return shuffled;
   }
+
+  // Get all sessions for a specific quiz ID
+  getSessionsByQuizId(quizId: string): QuizSession[] {
+    const sessions = Array.from(this.sessions.values()).filter(session => session.quizId === quizId);
+    // Remove expired sessions
+    const validSessions = sessions.filter(session => {
+      if (new Date() > session.expiresAt) {
+        this.sessions.delete(session.id);
+        return false;
+      }
+      return true;
+    });
+    if (validSessions.length !== sessions.length) {
+      this.saveSessions();
+    }
+    return validSessions;
+  }
+
+  // Get all unique quizzes with their metadata
+  getAllQuizzes(): Array<{
+    quizId: string;
+    quizData: Quiz;
+    createdAt: Date;
+    totalSessions: number;
+    completedSessions: number;
+    senderName?: string;
+    subject?: string;
+  }> {
+    const quizMap = new Map();
+    
+    for (const session of this.sessions.values()) {
+      // Skip expired sessions
+      if (new Date() > session.expiresAt) {
+        this.sessions.delete(session.id);
+        continue;
+      }
+
+      const quizId = session.quizId;
+      if (!quizMap.has(quizId)) {
+        quizMap.set(quizId, {
+          quizId,
+          quizData: session.quizData,
+          createdAt: session.createdAt,
+          totalSessions: 0,
+          completedSessions: 0,
+          senderName: session.senderName,
+          subject: session.subject,
+        });
+      }
+      
+      const quiz = quizMap.get(quizId);
+      quiz.totalSessions++;
+      if (session.isCompleted) {
+        quiz.completedSessions++;
+      }
+      
+      // Use earliest creation date
+      if (session.createdAt < quiz.createdAt) {
+        quiz.createdAt = session.createdAt;
+      }
+    }
+    
+    // Save if we removed expired sessions
+    this.saveSessions();
+    
+    return Array.from(quizMap.values()).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
 }
 
 // Export singleton instance

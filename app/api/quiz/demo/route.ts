@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     logger.info("Creating demo quiz session");
     
     const sessionId = createDemoSession();
-    const quizLink = `${new URL(req.url).origin}/quiz/take/${sessionId}`;
+    const quizLink = `${new URL(req.url).origin}/quizit/quiz/take/${sessionId}`;
     
     logger.info({ sessionId, quizLink }, "Demo quiz session created successfully");
     
