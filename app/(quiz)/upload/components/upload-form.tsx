@@ -1,19 +1,25 @@
 "use client";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import QuizView from "../../../../components/quiz/quiz-view";
+import { SendQuizForm } from "../../../../components/quiz/send-quiz-form";
 
-type Step = "choose-type" | "upload" | "generating" | "results";
+type Step = "select-questions" | "generating" | "results";
 
 export function UploadForm() {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [numQuestions, setNumQuestions] = useState(10);
   const [difficulty, setDifficulty] = useState("medium");
-  const [language, setLanguage] = useState("en");
   const [questionType, setQuestionType] = useState<"mcq" | "true-false" | "short-answer">("mcq");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
-  const [step, setStep] = useState<Step>("choose-type");
+  const [step, setStep] = useState<Step>("select-questions");
+  const [documentPreview, setDocumentPreview] = useState<string | null>(null);
+
+  // Note: sessionStorage from landing page can't preserve actual file content
+  // Users need to re-select their file on this page
 
   const acceptedTypes = useMemo(() => [
     "application/pdf",
@@ -31,6 +37,10 @@ export function UploadForm() {
     }
     setError(null);
     setFile(f);
+    
+    // Create preview URL
+    const url = URL.createObjectURL(f);
+    setDocumentPreview(url);
   }, [acceptedTypes]);
 
   async function generate() {
@@ -38,117 +48,276 @@ export function UploadForm() {
       setError("Please select a file");
       return;
     }
+    
     const form = new FormData();
     form.append("file", file);
     form.append("numQuestions", String(numQuestions));
     form.append("difficulty", difficulty);
-    form.append("language", language);
+    form.append("language", "en"); // Default to English
     form.append("questionTypes", questionType);
+    
     setLoading(true);
     setStep("generating");
     setResult(null);
+    
     try {
       const resp = await fetch("/api/ingest", { method: "POST", body: form });
       const data = await resp.json();
       if (!resp.ok) {
         setError(data?.error || "Request failed");
-        setStep("upload");
+        setStep("select-questions");
       } else {
         setResult(data);
         setStep("results");
       }
     } catch (err: any) {
       setError(err?.message || "Unexpected error");
-      setStep("upload");
+      setStep("select-questions");
     } finally {
       setLoading(false);
     }
   }
 
+  const handleCancel = () => {
+    // Clean up any document preview URLs and navigate back
+    if (documentPreview) {
+      URL.revokeObjectURL(documentPreview);
+    }
+    router.push('/');
+  };
+
+  if (step === "generating") {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="text-lg font-medium text-gray-900">Generating questions...</div>
+          <div className="text-sm text-gray-500 mt-2">Analyzing your document with AI</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "results" && result) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between bg-white p-6 rounded-lg shadow-sm border-2 border-gray-200" style={{ backgroundColor: '#ffffff', border: '2px solid #e2e8f0' }}>
+          <h2 className="text-3xl font-bold text-gray-900" style={{ color: '#0f172a' }}>Generated Questions</h2>
+          <div className="flex items-center space-x-4">
+            <SendQuizForm quiz={result} />
+            <button 
+              onClick={() => setStep("select-questions")} 
+              className="px-4 py-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 font-semibold rounded-lg border-2 border-blue-600 hover:border-blue-800 transition-all duration-200"
+              style={{ 
+                color: '#2563eb',
+                border: '2px solid #2563eb',
+                backgroundColor: 'transparent'
+              }}
+            >
+              Generate New Questions
+            </button>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-gray-200 p-8" style={{ backgroundColor: '#ffffff', border: '2px solid #e2e8f0' }}>
+          <QuizView quiz={result} />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-3xl">
-      {step === "choose-type" && (
-        <section className="space-y-4">
-          <h2 className="text-xl font-semibold">Pick a question type:</h2>
-          <div className="space-y-3">
-            {["mcq", "true-false", "short-answer"].map((qt) => (
-              <button
-                key={qt}
-                onClick={() => { setQuestionType(qt as any); setStep("upload"); }}
-                className={`w-full text-left border rounded-lg p-4 ${questionType === qt ? "border-blue-600 ring-2 ring-blue-200" : "border-gray-200"}`}
-              >
-                <span className="font-medium capitalize">{qt.replace("-", " ")}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {step === "upload" && (
-        <section className="space-y-5">
-          <h2 className="text-xl font-semibold">Generate Questions</h2>
+    <div className="grid lg:grid-cols-2 gap-8 h-[calc(100vh-200px)]">
+      {/* Left Side - Document Preview */}
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        {!file ? (
           <div
-            className="border-2 border-dashed rounded-xl p-8 text-center bg-blue-50/40"
+            className="h-full border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center p-8"
             onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) onDrop(f); }}
+            onDrop={(e) => { 
+              e.preventDefault(); 
+              const f = e.dataTransfer.files?.[0]; 
+              if (f) onDrop(f); 
+            }}
           >
-            <div className="mb-3">Add PDF or DOCX</div>
-            <div className="text-xs text-gray-500 mb-4">Supported: PDF, DOCX · Max 20MB</div>
-            <label className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded cursor-pointer">
-              <input
-                type="file"
-                accept={acceptedTypes.join(",")}
-                className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) onDrop(f); }}
-              />
-              Select files
-            </label>
-            {file && <div className="mt-3 text-sm">Selected: <span className="font-medium">{file.name}</span></div>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium">Questions</label>
-              <input type="number" min={1} max={50} value={numQuestions} onChange={(e) => setNumQuestions(Number(e.target.value))} className="mt-1 w-full border p-2 rounded" />
+            <div className="text-center">
+              <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p className="text-lg font-medium text-gray-900 mb-2">Upload your document</p>
+              <p className="text-sm text-gray-500 mb-4">Drag and drop a PDF or DOCX file here</p>
+              <label className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700 transition-colors">
+                <input
+                  type="file"
+                  accept={acceptedTypes.join(",")}
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) onDrop(f); }}
+                />
+                Choose File
+              </label>
             </div>
-            <div>
-              <label className="block text-sm font-medium">Difficulty</label>
-              <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="mt-1 w-full border p-2 rounded">
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
+          </div>
+        ) : (
+          <div className="h-full flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Document Preview</h3>
+              <button
+                onClick={() => {
+                  setFile(null);
+                  setDocumentPreview(null);
+                  if (documentPreview) URL.revokeObjectURL(documentPreview);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Document preview area */}
+            <div className="flex-1 bg-gray-50 rounded-lg p-6 overflow-hidden">
+              <div className="bg-white rounded shadow-sm p-6 h-full">
+                <div className="text-center">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-lg mb-4">
+                    <svg className="w-8 h-8 text-red-600" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
+                  </div>
+                  <h4 className="font-semibold text-gray-900 mb-2">{file.name}</h4>
+                  <p className="text-sm text-gray-500">Ready to generate questions</p>
+                  
+                  {/* Mock document content preview */}
+                  <div className="mt-6 text-left bg-gray-50 rounded p-4">
+                    <div className="space-y-3 text-xs text-gray-600">
+                      <div className="font-semibold">Document Preview:</div>
+                      <div className="space-y-2">
+                        <div className="h-2 bg-gray-200 rounded w-full"></div>
+                        <div className="h-2 bg-gray-200 rounded w-5/6"></div>
+                        <div className="h-2 bg-gray-200 rounded w-4/6"></div>
+                        <div className="h-2 bg-gray-200 rounded w-full"></div>
+                        <div className="h-2 bg-gray-200 rounded w-3/4"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Right Side - Question Configuration */}
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900">Pick a question type:</h2>
+        </div>
+
+        <div className="space-y-4 mb-6">
+          {[
+            { value: "mcq", label: "Multiple-choice questions" },
+            { value: "true-false", label: "True-or-false questions" },
+            { value: "short-answer", label: "Open-ended questions" }
+          ].map((option) => (
+            <label
+              key={option.value}
+              className={`flex items-center space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                questionType === option.value
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              <input
+                type="radio"
+                name="questionType"
+                value={option.value}
+                checked={questionType === option.value}
+                onChange={(e) => setQuestionType(e.target.value as any)}
+                className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+              />
+              <span className="font-medium text-gray-900">{option.label}</span>
+            </label>
+          ))}
+        </div>
+
+        {/* Number of Questions */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Number of questions
+          </label>
+          <div className="relative">
+            <select
+              value={numQuestions}
+              onChange={(e) => setNumQuestions(Number(e.target.value))}
+              className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none cursor-pointer shadow-sm hover:border-gray-400 transition-colors"
+            >
+              {[5, 10, 15, 20, 25, 30].map(num => (
+                <option key={num} value={num} className="text-gray-900 bg-white py-2">{num} questions</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Additional Settings */}
+        <div className="mb-8">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Difficulty
+            </label>
+            <div className="relative">
+              <select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+                className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none cursor-pointer shadow-sm hover:border-gray-400 transition-colors"
+              >
+                <option value="easy" className="text-gray-900 bg-white py-2">Easy</option>
+                <option value="medium" className="text-gray-900 bg-white py-2">Medium</option>
+                <option value="hard" className="text-gray-900 bg-white py-2">Hard</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium">Language</label>
-              <input value={language} onChange={(e) => setLanguage(e.target.value)} className="mt-1 w-full border p-2 rounded" />
-            </div>
           </div>
+        </div>
 
-          <button onClick={generate} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50">
-            Generate questions
+        {/* Action Buttons */}
+        <div className="flex items-center justify-between">
+          <button
+            onClick={handleCancel}
+            className="flex items-center space-x-2 text-blue-600 hover:text-blue-700 font-medium"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <span>Cancel</span>
           </button>
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-        </section>
-      )}
+          
+          <button
+            onClick={generate}
+            disabled={loading || !file}
+            className="flex items-center space-x-2 px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg border-2 border-blue-600 hover:border-blue-700"
+            style={{
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              border: '2px solid #2563eb',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+            }}
+          >
+            <span>Generate Questions</span>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </button>
+        </div>
 
-      {step === "generating" && (
-        <section className="py-10 text-center">
-          <div className="animate-pulse text-sm text-gray-700">Analyzing with AI…</div>
-        </section>
-      )}
-
-      {step === "results" && result && (
-        <section className="space-y-4">
-          <h2 className="text-xl font-semibold">Multiple-choice questions</h2>
-          <div className="p-4 bg-white border rounded-lg shadow-sm">
-            <QuizView quiz={result} />
+        {error && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-600">{error}</p>
           </div>
-          <div>
-            <button className="text-sm text-blue-600 underline" onClick={() => setStep("upload")}>Refine these questions</button>
-          </div>
-        </section>
-      )}
+        )}
+      </div>
     </div>
   );
 }

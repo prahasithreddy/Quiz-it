@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc;
+  --foreground: #1e293b;
 }
 
 @theme inline {
@@ -12,15 +12,62 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Force light mode for better visibility */
+body {
+  background: #f8fafc !important;
+  color: #1e293b !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  min-height: 100vh;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Ensure all text is dark and readable */
+* {
+  color: inherit;
+}
+
+/* Fix button and interactive elements */
+button, .btn {
+  font-weight: 500;
+}
+
+/* Ensure proper contrast for all interactive elements */
+.bg-white {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.bg-gray-50 {
+  background-color: #f8fafc !important;
+}
+
+.text-gray-900 {
+  color: #0f172a !important;
+}
+
+.text-gray-700 {
+  color: #334155 !important;
+}
+
+.text-gray-600 {
+  color: #475569 !important;
+}
+
+.text-gray-500 {
+  color: #64748b !important;
+}
+
+/* Ensure buttons have proper contrast */
+.bg-blue-600 {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.bg-green-600 {
+  background-color: #16a34a !important;
+  color: #ffffff !important;
+}
+
+.bg-red-600 {
+  background-color: #dc2626 !important;
+  color: #ffffff !important;
 }
