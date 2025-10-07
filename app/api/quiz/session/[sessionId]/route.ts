@@ -40,10 +40,6 @@ function calculateResults(session: any, questions: any[]) {
       } else if (question.type === 'true-false') {
         isCorrect = userAnswer.answer === question.answer;
         userAnswerText = userAnswer.answer ? "True" : "False";
-      } else if (question.type === 'short-answer') {
-        // For short answer, we'll do a simple case-insensitive comparison
-        isCorrect = userAnswer.answer?.toLowerCase().trim() === question.answer?.toLowerCase().trim();
-        userAnswerText = userAnswer.answer || "No answer";
       }
     } else {
       results.unansweredQuestions++;
@@ -62,8 +58,6 @@ function calculateResults(session: any, questions: any[]) {
       correctAnswerText = correctOption ? correctOption.text : "Unknown";
     } else if (question.type === 'true-false') {
       correctAnswerText = question.answer ? "True" : "False";
-    } else if (question.type === 'short-answer') {
-      correctAnswerText = question.answer || "No correct answer set";
     }
 
     results.questionResults.push({
@@ -178,9 +172,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ses
         return Response.json({ error: "Quiz already started" }, { status: 400 });
       }
 
+      // Get the questions and store their order if randomization is enabled
+      const questions = quizSessionStore.getQuizQuestions(session);
+      const questionOrder = questions.map(q => q.id);
+
       const updatedSession = quizSessionStore.update(sessionId, {
         isStarted: true,
         startedAt: new Date(),
+        questionOrder: questionOrder, // Store the question order to maintain consistency
       });
 
       if (!updatedSession) {

@@ -68,12 +68,6 @@ export default function QuizView({ quiz }: { quiz: Quiz }) {
               </div>
             )}
 
-            {/* Short Answer */}
-            {question.type === "short-answer" && showAnswers[question.id] && (
-              <div className="mb-4 text-gray-900">
-                <strong>Answer:</strong> {question.answer}
-              </div>
-            )}
 
             {/* Show Answer Button */}
             <button

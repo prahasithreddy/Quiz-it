@@ -38,11 +38,17 @@ export function createDemoSession(): string {
           },
           {
             id: "q3",
-            type: "short-answer" as const,
+            type: "mcq" as const,
             prompt: "What method would you use to add an element to the end of an array in JavaScript?",
             difficulty: "medium" as const,
             explanation: "The push() method adds one or more elements to the end of an array and returns the new length of the array.",
-            answer: "push",
+            options: [
+              { id: "a", text: "push()" },
+              { id: "b", text: "pop()" },
+              { id: "c", text: "shift()" },
+              { id: "d", text: "unshift()" }
+            ],
+            correctOptionId: "a",
           },
         ],
       },
@@ -78,6 +84,7 @@ export function createDemoSession(): string {
     currentQuestionIndex: 0,
     answers: [],
     score: undefined,
+    questionOrder: undefined, // Will be set when quiz starts
   };
 
   quizSessionStore.create(session);

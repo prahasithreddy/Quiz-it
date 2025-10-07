@@ -11,12 +11,14 @@ export function UploadForm() {
   const [file, setFile] = useState<File | null>(null);
   const [numQuestions, setNumQuestions] = useState(10);
   const [difficulty, setDifficulty] = useState("medium");
-  const [questionType, setQuestionType] = useState<"mcq" | "true-false" | "short-answer">("mcq");
+  const [questionType, setQuestionType] = useState<"mcq" | "true-false" | "both">("mcq");
+  const [quizName, setQuizName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
   const [step, setStep] = useState<Step>("select-questions");
   const [documentPreview, setDocumentPreview] = useState<string | null>(null);
+  const [generationMetadata, setGenerationMetadata] = useState<any>(null);
 
   // Note: sessionStorage from landing page can't preserve actual file content
   // Users need to re-select their file on this page
@@ -54,7 +56,15 @@ export function UploadForm() {
     form.append("numQuestions", String(numQuestions));
     form.append("difficulty", difficulty);
     form.append("language", "en"); // Default to English
-    form.append("questionTypes", questionType);
+    if (questionType === "both") {
+      form.append("questionTypes", "mcq");
+      form.append("questionTypes", "true-false");
+    } else {
+      form.append("questionTypes", questionType);
+    }
+    if (quizName.trim()) {
+      form.append("quizName", quizName.trim());
+    }
     
     setLoading(true);
     setStep("generating");
@@ -64,14 +74,22 @@ export function UploadForm() {
       const resp = await fetch("/api/ingest", { method: "POST", body: form });
       const data = await resp.json();
       if (!resp.ok) {
-        setError(data?.error || "Request failed");
+        // Enhanced error handling with more specific messages
+        let errorMessage = data?.error || "Request failed";
+        if (data?.details && Array.isArray(data.details)) {
+          errorMessage += " Details: " + data.details.join(", ");
+        }
+        setError(errorMessage);
         setStep("select-questions");
       } else {
-        setResult(data);
+        // Extract metadata for enhanced user feedback
+        const { _metadata, ...quiz } = data;
+        setResult(quiz);
+        setGenerationMetadata(_metadata);
         setStep("results");
       }
     } catch (err: any) {
-      setError(err?.message || "Unexpected error");
+      setError(err?.message || "Unexpected error occurred. Please try again.");
       setStep("select-questions");
     } finally {
       setLoading(false);
@@ -89,24 +107,55 @@ export function UploadForm() {
   if (step === "generating") {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <div className="text-lg font-medium text-gray-900">Generating questions...</div>
-          <div className="text-sm text-gray-500 mt-2">Analyzing your document with AI</div>
+          <div className="text-lg font-medium text-gray-900 mb-2">Generating questions...</div>
+          <div className="text-sm text-gray-500 space-y-1">
+            <div>📄 Analyzing document structure and content</div>
+            <div>🧠 Creating intelligent content chunks</div>
+            <div>❓ Generating {numQuestions} {questionType === 'both' ? 'diverse' : questionType} questions</div>
+            <div>✨ Ensuring quality and accuracy</div>
+          </div>
+          <div className="mt-4 text-xs text-gray-400">
+            This may take 30-60 seconds depending on document complexity
+          </div>
         </div>
       </div>
     );
   }
 
   if (step === "results" && result) {
+    const totalQuestions = result.sections?.reduce((sum: number, section: any) => sum + (section.questions?.length || 0), 0) || 0;
+    
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between bg-white p-6 rounded-lg shadow-sm border-2 border-gray-200" style={{ backgroundColor: '#ffffff', border: '2px solid #e2e8f0' }}>
-          <h2 className="text-3xl font-bold text-gray-900" style={{ color: '#0f172a' }}>Generated Questions</h2>
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900" style={{ color: '#0f172a' }}>Generated Questions</h2>
+            {generationMetadata?.generation && (
+              <p className="text-sm text-gray-600 mt-2">
+                {totalQuestions} questions generated from {generationMetadata.generation.chunksUsed} content sections
+                {generationMetadata.generation.sourceQuality && (
+                  <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
+                    generationMetadata.generation.sourceQuality === 'high' 
+                      ? 'bg-green-100 text-green-800' 
+                      : generationMetadata.generation.sourceQuality === 'medium'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {generationMetadata.generation.sourceQuality} quality source
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
           <div className="flex items-center space-x-4">
             <SendQuizForm quiz={result} />
             <button 
-              onClick={() => setStep("select-questions")} 
+              onClick={() => {
+                setStep("select-questions");
+                setGenerationMetadata(null);
+              }} 
               className="px-4 py-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 font-semibold rounded-lg border-2 border-blue-600 hover:border-blue-800 transition-all duration-200"
               style={{ 
                 color: '#2563eb',
@@ -118,6 +167,30 @@ export function UploadForm() {
             </button>
           </div>
         </div>
+
+        {/* Content Quality Warnings */}
+        {generationMetadata?.generation?.contentWarnings && generationMetadata.generation.contentWarnings.length > 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-yellow-800">Document Processing Notes</h3>
+                <div className="mt-2 text-sm text-yellow-700">
+                  <ul className="list-disc pl-5 space-y-1">
+                    {generationMetadata.generation.contentWarnings.map((warning: string, index: number) => (
+                      <li key={index}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-lg shadow-lg border-2 border-gray-200 p-8" style={{ backgroundColor: '#ffffff', border: '2px solid #e2e8f0' }}>
           <QuizView quiz={result} />
         </div>
@@ -218,10 +291,10 @@ export function UploadForm() {
         </div>
 
         <div className="space-y-4 mb-6">
-          {[
+          {          [
             { value: "mcq", label: "Multiple-choice questions" },
             { value: "true-false", label: "True-or-false questions" },
-            { value: "short-answer", label: "Open-ended questions" }
+            { value: "both", label: "Both" }
           ].map((option) => (
             <label
               key={option.value}
@@ -242,6 +315,21 @@ export function UploadForm() {
               <span className="font-medium text-gray-900">{option.label}</span>
             </label>
           ))}
+        </div>
+
+        {/* Quiz Name */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Quiz Name
+          </label>
+          <input
+            type="text"
+            value={quizName}
+            onChange={(e) => setQuizName(e.target.value)}
+            placeholder="Enter a name for your quiz (optional)"
+            className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm hover:border-gray-400 transition-colors"
+          />
+          <p className="text-xs text-gray-500 mt-1">If left empty, we'll generate a name based on your document content</p>
         </div>
 
         {/* Number of Questions */}

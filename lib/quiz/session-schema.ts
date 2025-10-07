@@ -38,11 +38,12 @@ export const QuizSessionSchema = z.object({
   currentQuestionIndex: z.number().default(0),
   answers: z.array(z.object({
     questionId: z.string(),
-    answer: z.union([z.string(), z.boolean()]), // MCQ option ID, short answer text, or boolean for T/F
+    answer: z.union([z.string(), z.boolean()]), // MCQ option ID or boolean for T/F
     answeredAt: z.date(),
     timeSpentSeconds: z.number(),
   })).default([]),
   score: z.number().optional(), // Final score when completed
+  questionOrder: z.array(z.string()).optional(), // Store randomized question IDs when quiz starts
 });
 
 // Schema for taking quiz session

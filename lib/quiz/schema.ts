@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const QuestionTypeEnum = z.enum(["mcq", "true-false", "short-answer"]);
+export const QuestionTypeEnum = z.enum(["mcq", "true-false"]);
+export const GenerationQuestionTypeEnum = z.enum(["mcq", "true-false", "both"]);
 
 export const McqOptionSchema = z.object({
   id: z.string().min(1, "Option ID cannot be empty"),
@@ -33,15 +34,9 @@ export const TrueFalseQuestionSchema = QuestionBaseSchema.extend({
   answer: z.boolean(),
 });
 
-export const ShortAnswerQuestionSchema = QuestionBaseSchema.extend({
-  type: z.literal("short-answer"),
-  answer: z.string().min(1),
-});
-
 export const AnyQuestionSchema = z.discriminatedUnion("type", [
   McqQuestionSchema,
   TrueFalseQuestionSchema,
-  ShortAnswerQuestionSchema,
 ]);
 
 export const QuizSectionSchema = z.object({

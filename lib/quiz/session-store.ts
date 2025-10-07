@@ -36,11 +36,15 @@ class QuizSessionStore {
       
       // Convert dates back from ISO strings and populate the Map
       for (const [id, sessionData] of Object.entries(sessionsData)) {
-        const session = this.deserializeSession(sessionData as any);
-        
-        // Only load non-expired sessions
-        if (new Date() <= session.expiresAt) {
-          this.sessions.set(id, session);
+        try {
+          const session = this.deserializeSession(sessionData as any);
+          
+          // Only load non-expired sessions
+          if (new Date() <= session.expiresAt) {
+            this.sessions.set(id, session);
+          }
+        } catch (deserializeError) {
+          console.error(`Failed to deserialize session ${id}:`, deserializeError);
         }
       }
     } catch (error) {
@@ -98,8 +102,18 @@ class QuizSessionStore {
   }
 
   get(id: string): QuizSession | null {
-    const session = this.sessions.get(id);
-    if (!session) return null;
+    let session = this.sessions.get(id);
+    
+    // If not found in memory, try to reload from file system
+    // This handles cases where the in-memory store gets cleared in serverless environments
+    if (!session) {
+      this.loadSessions();
+      session = this.sessions.get(id);
+      
+      if (!session) {
+        return null;
+      }
+    }
     
     // Check if session has expired
     if (new Date() > session.expiresAt) {
@@ -158,7 +172,19 @@ class QuizSessionStore {
       }))
     );
 
-    // Randomize order if setting is enabled
+    // If we have a stored question order, use it to maintain consistency
+    if (session.questionOrder && session.questionOrder.length > 0) {
+      const orderedQuestions: any[] = [];
+      for (const questionId of session.questionOrder) {
+        const question = allQuestions.find(q => q.id === questionId);
+        if (question) {
+          orderedQuestions.push(question);
+        }
+      }
+      return orderedQuestions;
+    }
+
+    // Randomize order if setting is enabled (only for new sessions without stored order)
     if (session.settings.randomizeQuestionOrder) {
       return this.shuffleArray(allQuestions);
     }

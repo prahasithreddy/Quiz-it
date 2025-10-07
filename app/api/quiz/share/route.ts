@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
         currentQuestionIndex: 0,
         answers: [],
         score: undefined,
+        questionOrder: undefined, // Will be set when quiz starts
       };
 
       // Store the session

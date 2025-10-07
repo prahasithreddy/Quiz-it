@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 interface QuizSummary {
@@ -23,15 +23,27 @@ export default function DashboardPage() {
   const [quizzes, setQuizzes] = useState<QuizSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const router = useRouter();
+  
+  // Use refs to avoid stale closures in intervals
+  const quizzesRef = useRef(quizzes);
+  const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastFetchTimeRef = useRef<number>(0);
 
+  // Update refs when state changes
   useEffect(() => {
-    fetchQuizzes();
-  }, []);
+    quizzesRef.current = quizzes;
+  }, [quizzes]);
 
-  const fetchQuizzes = async () => {
+  const fetchQuizzes = useCallback(async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
+      
+      lastFetchTimeRef.current = Date.now();
       const response = await fetch("/api/quiz/dashboard");
       const data = await response.json();
 
@@ -40,13 +52,86 @@ export default function DashboardPage() {
         return;
       }
 
-      setQuizzes(data.quizzes);
+      // Only update state if data has actually changed
+      const newQuizzes = data.quizzes;
+      const currentQuizzes = quizzesRef.current;
+      
+      // Simple comparison - in production, you might want a more sophisticated diff
+      const hasChanged = JSON.stringify(newQuizzes) !== JSON.stringify(currentQuizzes);
+      
+      if (hasChanged) {
+        setQuizzes(newQuizzes);
+        setLastUpdated(new Date());
+        setError(null);
+        
+        // Clear any previous errors
+        if (error) {
+          setError(null);
+        }
+      }
     } catch (err) {
       setError("Network error. Please try again.");
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
-  };
+  }, [error]);
+
+  // Auto-refresh functionality
+  const startAutoRefresh = useCallback(() => {
+    if (autoRefreshIntervalRef.current) {
+      clearInterval(autoRefreshIntervalRef.current);
+    }
+
+    autoRefreshIntervalRef.current = setInterval(() => {
+      // Only fetch if the last fetch was more than 30 seconds ago to avoid too frequent calls
+      if (Date.now() - lastFetchTimeRef.current > 30000) {
+        fetchQuizzes(false); // Silent refresh without loading indicator
+      }
+    }, 30000); // Check every 30 seconds
+  }, [fetchQuizzes]);
+
+  const stopAutoRefresh = useCallback(() => {
+    if (autoRefreshIntervalRef.current) {
+      clearInterval(autoRefreshIntervalRef.current);
+      autoRefreshIntervalRef.current = null;
+    }
+  }, []);
+
+  // Cross-tab communication for instant updates
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'quiz-completed' && e.newValue) {
+        try {
+          // Another tab completed a quiz, refresh our data
+          const completionData = JSON.parse(e.newValue);
+          console.log('Quiz completed in another tab:', completionData);
+          fetchQuizzes(false); // Silent refresh
+        } catch (error) {
+          console.warn('Failed to parse quiz completion data:', error);
+        }
+      }
+    };
+
+    // Only add listener if localStorage is available
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.addEventListener('storage', handleStorageChange);
+      return () => window.removeEventListener('storage', handleStorageChange);
+    }
+  }, [fetchQuizzes]);
+
+  // Start auto-refresh on mount
+  useEffect(() => {
+    fetchQuizzes();
+    if (autoRefreshEnabled) {
+      startAutoRefresh();
+    }
+
+    return () => {
+      stopAutoRefresh();
+    };
+  }, [fetchQuizzes, startAutoRefresh, stopAutoRefresh, autoRefreshEnabled]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -82,7 +167,7 @@ export default function DashboardPage() {
             {error}
           </div>
           <button
-            onClick={fetchQuizzes}
+            onClick={() => fetchQuizzes()}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Retry
@@ -146,15 +231,44 @@ export default function DashboardPage() {
         ) : (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Your Quizzes ({quizzes.length})
-              </h2>
-              <button
-                onClick={fetchQuizzes}
-                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900"
-              >
-                Refresh
-              </button>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Your Quizzes ({quizzes.length})
+                </h2>
+                {lastUpdated && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Last updated: {lastUpdated.toLocaleTimeString()}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
+                  <label className="flex items-center space-x-1">
+                    <input
+                      type="checkbox"
+                      checked={autoRefreshEnabled}
+                      onChange={(e) => setAutoRefreshEnabled(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-xs text-gray-600">Auto-refresh</span>
+                  </label>
+                  {autoRefreshEnabled && (
+                    <div className="flex items-center">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="ml-1 text-xs text-gray-500">Live</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => fetchQuizzes()}
+                  className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                  title="Refresh now"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

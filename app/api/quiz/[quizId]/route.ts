@@ -49,9 +49,6 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
               isCorrect = answer.answer === question.correctOptionId;
             } else if (question.type === 'true-false') {
               isCorrect = answer.answer === question.answer;
-            } else if (question.type === 'short-answer') {
-              // Simple string comparison for short answer (could be improved with fuzzy matching)
-              isCorrect = String(answer.answer).toLowerCase().trim() === question.answer.toLowerCase().trim();
             }
             
             if (isCorrect) correctAnswers++;

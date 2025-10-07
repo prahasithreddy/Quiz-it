@@ -49,7 +49,7 @@ interface Progress {
 
 interface Question {
   id: string;
-  type: "mcq" | "true-false" | "short-answer";
+  type: "mcq" | "true-false";
   prompt: string;
   difficulty: string;
   options?: { id: string; text: string }[];
@@ -196,6 +196,30 @@ export function QuizTaker({ sessionId }: QuizTakerProps) {
       // If quiz is completed, update session and fetch results
       if (data.isCompleted) {
         setSession(prev => prev ? { ...prev, isCompleted: true } : null);
+        
+        // Notify other tabs/windows that a quiz was completed for instant dashboard updates
+        try {
+          const completionData = {
+            sessionId,
+            completedAt: new Date().toISOString(),
+            timestamp: Date.now()
+          };
+          localStorage.setItem('quiz-completed', JSON.stringify(completionData));
+          
+          // Clear the notification after a brief moment to allow other tabs to detect the change
+          setTimeout(() => {
+            try {
+              localStorage.removeItem('quiz-completed');
+            } catch (error) {
+              // Silently fail if localStorage is not available
+              console.warn('Failed to clear quiz completion notification:', error);
+            }
+          }, 1000);
+        } catch (error) {
+          // Silently fail if localStorage is not available (e.g., in private browsing mode)
+          console.warn('Failed to send quiz completion notification:', error);
+        }
+        
         // Fetch detailed results
         setTimeout(() => fetchResults(), 500);
       }
@@ -506,15 +530,6 @@ export function QuizTaker({ sessionId }: QuizTakerProps) {
             </>
           )}
 
-          {currentQuestion.type === "short-answer" && (
-            <textarea
-              value={selectedAnswer as string || ""}
-              onChange={(e) => setSelectedAnswer(e.target.value)}
-              placeholder="Type your answer here..."
-              className="w-full p-4 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 resize-none"
-              rows={4}
-            />
-          )}
         </div>
 
         {/* Submit button */}
